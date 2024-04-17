@@ -32,6 +32,7 @@
  * Copyright Cyril Crassin, July 2010
  *
  * Edited by the Inviwo Foundation.
+ * Edited by Aritra Bhakat
  **/
 
 // need extensions added from C++
@@ -39,7 +40,6 @@
 // GL_EXT_bindable_uniform
 
 #include "oit/abufferlinkedlist.glsl"
-#include "oit/sort.glsl"
 #include "utils/structs.glsl"
 
 // How should the stuff be rendered? (Debugging options)
@@ -53,11 +53,40 @@ uniform sampler2D bgDepth;
 uniform vec2 reciprocalDimensions;
 #endif  // BACKGROUND_AVAILABLE
 
+uniform bool smoothing;
+uniform float znear;
+uniform float zfar;
+
+// Opacity optimisation settings
+uniform float q;
+uniform float r;
+uniform float lambda;
+
+uniform layout(size1x32) image2DArray importanceSumCoeffs[2]; // ping pong buffering for gaussian filtering
+uniform layout(size1x32) image2DArray opticalDepthCoeffs;
+
 // Whole number pixel offsets (not necessary just to test the layout keyword !)
 layout(pixel_center_integer) in vec4 gl_FragCoord;
 
 // Input interpolated fragment position
 smooth in vec4 fragPos;
+
+#include "opactopt/approximate/filter.glsl"
+#ifdef FOURIER
+    #include "opactopt/approximate/fourier.glsl"
+#endif
+#ifdef LEGENDRE
+    #include "opactopt/approximate/legendre.glsl"
+#endif
+#ifdef CHEBYSHEV
+    #include "opactopt/approximate/chebyshev.glsl"
+#endif
+#ifdef PIECEWISE
+    #include "opactopt/approximate/piecewise.glsl"
+#endif
+
+// Converts depths from screen space to clip space
+void lineariseDepths(uint pixelIdx);
 
 // Computes only the number of fragments
 int getFragmentCount(uint pixelIdx);
@@ -88,28 +117,74 @@ void main() {
         gl_FragDepth = p.depth;
 #else
         float backgroundDepth = 1.0;
-#ifdef BACKGROUND_AVAILABLE
-        // Assume the camera used to render the background has the same near and far plane,
-        // so we can directly compare depths.
-        vec2 texCoord = (gl_FragCoord.xy + 0.5) * reciprocalDimensions;
-        backgroundDepth = texture(bgDepth, texCoord).x;
-#endif  // BACKGROUND_AVAILABLE
+        lineariseDepths(pixelIdx);
 
-        // front-to-back shading
-        vec4 color = vec4(0);
-        uint lastPtr = 0;
-        vec4 nextFragment = selectionSortNext(pixelIdx, 0.0, lastPtr);
-        abufferPixel unpackedFragment = uncompressPixelData(nextFragment);
-        gl_FragDepth = min(backgroundDepth, unpackedFragment.depth);
-        
-        while (unpackedFragment.depth >= 0 && unpackedFragment.depth <= backgroundDepth) {
-            vec4 c = unpackedFragment.color;
-            color.rgb = color.rgb + (1 - color.a) * c.a * c.rgb;
-            color.a = color.a + (1 - color.a) * c.a;
-
-            nextFragment = selectionSortNext(pixelIdx, unpackedFragment.depth, lastPtr);
-            unpackedFragment = uncompressPixelData(nextFragment);
+        // Clear coefficient buffers
+        for (int i = 0; i < N_APPROXIMATION_COEFFICIENTS; i++) {
+            imageStore(importanceSumCoeffs[0], ivec3(coords, i), vec4(0.0));
+            imageStore(importanceSumCoeffs[1], ivec3(coords, i), vec4(0.0));
+            imageStore(opticalDepthCoeffs, ivec3(coords, i), vec4(0.0));
         }
+
+        // Perform opacity optimisation and compositing
+        uint idx = pixelIdx;
+
+        // Project importance sum coefficients
+        while (idx != 0) {
+            projectImportanceSum(idx);
+            memoryBarrierImage();
+            idx = floatBitsToUint(readPixelStorage(idx - 1).x);
+        }
+
+        if (smoothing)
+            filterImportanceSum();
+
+        // Optimise opacities and project optical depth coefficients
+        idx = pixelIdx;
+        float totalImportanceSum = imageLoad(importanceSumCoeffs[int(smoothing)], ivec3(coords, 0)).x;
+        while (idx != 0) {
+            abufferPixel pixel = uncompressPixelData(readPixelStorage(idx - 1));
+            vec4 c = pixel.color;
+            float importanceSq = c.a * c.a;
+            float importanceAtDepth = approxImportanceSum(pixel.depth) + 0.5 * importanceSq; // correct for importance sum approximation at discontinuity
+
+            float alpha = clamp(1 /
+                            (1 + pow(1 - c.a, 2 * lambda)
+                            * (r * (importanceAtDepth - importanceSq)
+                            + q * (totalImportanceSum - importanceAtDepth))),
+                            0.0, 0.9999); // set pixel alpha using opacity optimisation
+            pixel.color.a = alpha;
+            writePixelStorage(idx - 1, compressPixelData(pixel)); // replace importance g_i in alpha channel with actual alpha
+
+            projectOpticalDepth(idx);
+            memoryBarrierImage();
+            idx = pixel.previous;
+        }
+
+        // Composite
+        vec3 numerator = vec3(0);
+        float denominator = 0.0;
+        idx = pixelIdx;
+        float totalOpticalDepth = imageLoad(opticalDepthCoeffs, ivec3(coords, 0)).x;
+        float minDepth = backgroundDepth;
+
+        while (idx != 0) {
+            abufferPixel pixel = uncompressPixelData(readPixelStorage(idx - 1));
+            minDepth = min(pixel.depth, minDepth);
+            vec4 c = pixel.color;
+            float opticalDepth = approxOpticalDepth(pixel.depth) - 0.5 * log(1 - c.a); // correct for optical depth approximation at discontinuity
+
+            float weight = c.a / (1 - c.a) * exp(-opticalDepth);
+            numerator += c.rgb * weight;
+            denominator += weight;
+            idx = pixel.previous;
+        }
+
+        vec4 color = vec4(0);
+        color.rgb = numerator / denominator;
+        color.a = 1.0 - exp(-totalOpticalDepth);
+        gl_FragDepth = minDepth;
+
         FragData0 = color;
         PickingData = vec4(0.0, 0.0, 0.0, 1.0);
 #endif
@@ -122,6 +197,18 @@ void main() {
         FragData0 = vec4(0.0f);
         PickingData = vec4(0.0, 0.0, 0.0, 1.0);
 #endif
+    }
+}
+
+void lineariseDepths(uint pixelIdx) {
+    int counter = 0;
+    while (pixelIdx != 0 && counter < ABUFFER_SIZE) {
+        vec4 val = readPixelStorage(pixelIdx - 1);
+        float z_w = znear * zfar / (zfar + val.y * (znear - zfar)); // world space depth
+        val.y = (z_w - znear) / (zfar - znear); // linear normalised depth;
+        writePixelStorage(pixelIdx - 1, val); 
+        counter++;
+        pixelIdx = floatBitsToUint(val.x);
     }
 }
 

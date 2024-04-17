@@ -53,6 +53,11 @@ uniform sampler2D bgDepth;
 uniform vec2 reciprocalDimensions;
 #endif  // BACKGROUND_AVAILABLE
 
+// Opacity optimisation settings
+uniform float q;
+uniform float r;
+uniform float lambda;
+
 // Whole number pixel offsets (not necessary just to test the layout keyword !)
 layout(pixel_center_integer) in vec4 gl_FragCoord;
 
@@ -85,7 +90,7 @@ void main() {
         vec4 p = resolveClosest(pixelIdx);
         FragData0 = uncompressPixelData(p).color;
         PickingData = vec4(0.0, 0.0, 0.0, 1.0);
-        gl_FragDepth = p.depth;
+        gl_FragDepth = uncompressPixelData(p).depth;
 #else
         float backgroundDepth = 1.0;
 #ifdef BACKGROUND_AVAILABLE
@@ -95,22 +100,39 @@ void main() {
         backgroundDepth = texture(bgDepth, texCoord).x;
 #endif  // BACKGROUND_AVAILABLE
 
-        // front-to-back shading
+
+        // Calculate total importance sum
+        uint idx = pixelIdx;
+        int counter = 0;
+        float totalImportanceSum = 0.0;
+        while (idx != 0 && counter < ABUFFER_SIZE) {
+            vec4 data = readPixelStorage(idx - 1);
+            float importance = data.z;
+            if (data.y >= 0 && data.y <= backgroundDepth)
+                totalImportanceSum += importance * importance;
+            idx = floatBitsToUint(readPixelStorage(idx - 1).x);
+            counter++;
+        }
+
+        // front-to-back compositing
         vec4 color = vec4(0);
         uint lastPtr = 0;
         vec4 nextFragment = selectionSortNext(pixelIdx, 0.0, lastPtr);
         abufferPixel unpackedFragment = uncompressPixelData(nextFragment);
-        gl_FragDepth = min(backgroundDepth, unpackedFragment.depth);
+        float currentImportanceSum = 0.0;
         
         while (unpackedFragment.depth >= 0 && unpackedFragment.depth <= backgroundDepth) {
             vec4 c = unpackedFragment.color;
+            currentImportanceSum += c.a * c.a;
+            c.a = 1 / (1 + pow(1 - c.a, 2 * lambda) * (r * (currentImportanceSum - c.a * c.a) + q * (totalImportanceSum - currentImportanceSum))); // set alpha by opacity optimisation
             color.rgb = color.rgb + (1 - color.a) * c.a * c.rgb;
             color.a = color.a + (1 - color.a) * c.a;
 
             nextFragment = selectionSortNext(pixelIdx, unpackedFragment.depth, lastPtr);
             unpackedFragment = uncompressPixelData(nextFragment);
         }
-        FragData0 = color;
+
+        FragData0 = vec4(color);
         PickingData = vec4(0.0, 0.0, 0.0, 1.0);
 #endif
 
