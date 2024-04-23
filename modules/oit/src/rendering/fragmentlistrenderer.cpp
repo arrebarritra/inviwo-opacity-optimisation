@@ -87,7 +87,7 @@ FragmentListRenderer::FragmentListRenderer()
     : screenSize_{0, 0}
     , fragmentSize_{1024}
 
-    , abufferIdxTex_{screenSize_, GL_RED, GL_R32F, GL_FLOAT, GL_NEAREST}
+    , abufferIdxTex_{screenSize_, GL_RED_INTEGER, GL_R32UI, GL_UNSIGNED_INT, GL_NEAREST}
     , textureUnits_{}
     , atomicCounter_{sizeof(GLuint), GLFormats::getGLFormat(GL_UNSIGNED_INT, 1), GL_DYNAMIC_DRAW,
                      GL_ATOMIC_COUNTER_BUFFER}
@@ -100,7 +100,7 @@ FragmentListRenderer::FragmentListRenderer()
 
     LGL_ERROR_CLASS;
 
-    buildShaders(builtWithBackground_, useIllustration_);
+    buildShaders();
 
     illustrationOnReload_ = illustration_.onReload.add([this]() { onReload_.invoke(); });
     clear_.onReload([this]() { onReload_.invoke(); });
@@ -173,8 +173,8 @@ bool FragmentListRenderer::postPass(bool useIllustration, const Image* backgroun
     }
 
     // Build shader depending on inport state.
-    if ((supportsFragmentLists() && static_cast<bool>(background) != builtWithBackground_) || useIllustration == !useIllustration_)
-        buildShaders(background, useIllustration);
+    if ((supportsFragmentLists() && static_cast<bool>(background) != builtWithBackground_))
+        buildShaders(background);
 
     if (!useIllustration) {
         // render fragment list
@@ -270,9 +270,8 @@ DispatcherHandle<void()> FragmentListRenderer::onReload(std::function<void()> ca
     return onReload_.add(callback);
 }
 
-void FragmentListRenderer::buildShaders(bool hasBackground, bool useIllustration) {
+void FragmentListRenderer::buildShaders(bool hasBackground) {
     builtWithBackground_ = hasBackground;
-    useIllustration_ = useIllustration;
 
     auto* dfs = display_.getFragmentShaderObject();
     dfs->clearShaderExtensions();
@@ -296,7 +295,7 @@ void FragmentListRenderer::buildShaders(bool hasBackground, bool useIllustration
         clear_.build();
     }
 
-    if (supportsIllustration() && useIllustration_) {
+    if (supportsIllustration()) {
         auto* ffs = illustration_.fill.getFragmentShaderObject();
         ffs->setShaderExtension("GL_ARB_shader_atomic_counter_ops",
                                 ShaderObject::ExtensionBehavior::Enable, supportsIllustration());
