@@ -101,7 +101,6 @@ FragmentListRenderer::FragmentListRenderer()
     LGL_ERROR_CLASS;
 
     buildShaders();
-
     illustrationOnReload_ = illustration_.onReload.add([this]() { onReload_.invoke(); });
     clear_.onReload([this]() { onReload_.invoke(); });
     display_.onReload([this]() { onReload_.invoke(); });
@@ -151,6 +150,7 @@ void FragmentListRenderer::beginCount() {
     // to store all the fragments.
     glBeginQuery(GL_SAMPLES_PASSED, totalFragmentQuery_);
 }
+
 void FragmentListRenderer::endCount() { glEndQuery(GL_SAMPLES_PASSED); }
 
 bool FragmentListRenderer::postPass(bool useIllustration, const Image* background) {
@@ -184,8 +184,8 @@ bool FragmentListRenderer::postPass(bool useIllustration, const Image* backgroun
             // Set depth buffer to read from.
             utilgl::bindAndSetUniforms(display_, textureUnits_, *background, "bg",
                                        ImageType::ColorDepth);
-            display_.setUniform("reciprocalDimensions", vec2(1) / vec2(screenSize_));
         }
+        display_.setUniform("reciprocalDimensions", vec2(1) / vec2(screenSize_));
         utilgl::BlendModeState blendModeStateGL(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         utilgl::GlBoolState depthTest(GL_DEPTH_TEST, GL_TRUE);
         utilgl::DepthMaskState depthMask(GL_TRUE);
