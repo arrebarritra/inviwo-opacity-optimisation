@@ -13,6 +13,7 @@ set(HEADER_FILES
     include/modules/oit/processors/calcnormalsprocessor.h
     include/modules/oit/processors/linerasterizer.h
     include/modules/oit/processors/meshrasterizer.h
+    include/modules/oit/processors/pointrasterizer.h
     include/modules/oit/processors/rasterizationrenderer.h
     include/modules/oit/processors/rasterizer.h
     include/modules/oit/processors/sphererasterizer.h
@@ -33,6 +34,7 @@ set(SOURCE_FILES
     src/processors/calcnormalsprocessor.cpp
     src/processors/linerasterizer.cpp
     src/processors/meshrasterizer.cpp
+    src/processors/pointrasterizer.cpp
     src/processors/rasterizationrenderer.cpp
     src/processors/rasterizer.cpp
     src/processors/sphererasterizer.cpp
@@ -59,6 +61,7 @@ set(SHADER_FILES
     glsl/fancymeshrenderer.geom
     glsl/fancymeshrenderer.vert
     glsl/oit-linerenderer.frag
+    glsl/oit-pointrenderer.frag
     glsl/oit-sphereglyph.frag
 )
 ivw_group("Shader Files" ${SHADER_FILES})

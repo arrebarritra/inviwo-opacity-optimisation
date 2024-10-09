@@ -36,6 +36,7 @@
 #include <modules/oit/processors/calcnormalsprocessor.h>   // for CalcNormalsProcessor
 #include <modules/oit/processors/linerasterizer.h>         // for LineRasterizer
 #include <modules/oit/processors/meshrasterizer.h>         // for MeshRasterizer
+#include <modules/oit/processors/pointrasterizer.h>         // for PointRasterizer
 #include <modules/oit/processors/rasterizationrenderer.h>  // for RasterizationRend...
 #include <modules/oit/processors/rasterizer.h>
 #include <modules/oit/processors/sphererasterizer.h>        // for SphereRasterizer
@@ -58,6 +59,7 @@ OITModule::OITModule(InviwoApplication* app) : InviwoModule(app, "Oit") {
     // Processors
     registerProcessor<LineRasterizer>();
     registerProcessor<MeshRasterizer>();
+    registerProcessor<PointRasterizer>();
     registerProcessor<RasterizationRenderer>();
     registerProcessor<TransformRasterization>();
     registerProcessor<CalcNormalsProcessor>();
