@@ -221,7 +221,7 @@ jobs:
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
     - name: "Clone Inviwo"
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with: 
         path: inviwo
         submodules: recursive
@@ -323,7 +323,7 @@ jobs:
         sudo update-alternatives --set gcc /usr/bin/gcc-13
 
     - name: "Clone Inviwo"
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with: 
         path: inviwo
         submodules: recursive
@@ -470,7 +470,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: "Clone Inviwo"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with: 
           ref: gh-pages
           path: inviwo
