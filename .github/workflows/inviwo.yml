@@ -255,21 +255,21 @@ jobs:
       
     - name: "Upload installer"
       if: matrix.linkage == 'dynamic' && matrix.configuration == 'Release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: ${{ matrix.installer }}
         path: ${{ matrix.artifact }}
 
     - name: "Upload doxygen"
       if: matrix.system == 'windows' &&  matrix.linkage == 'dynamic' && matrix.configuration == 'Release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: inviwo-cpp-api
         path: build/docs/inviwo/html/*
 
     - name: "Upload shpinx"
       if: matrix.system == 'windows' &&  matrix.linkage == 'dynamic' && matrix.configuration == 'Release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: inviwo-python-api
         path: build/docs/python-api/*
@@ -458,7 +458,7 @@ jobs:
         echo "${{ steps.changelog.outputs.changelog }}"
         echo "-- End --"
     - name: "Upload Changelog"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v5
       with:
         name: changelog.md
         path: changelog.md
